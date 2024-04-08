@@ -15,6 +15,7 @@
 package swaggergen
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -198,7 +200,7 @@ func GenerateDocs(curpath string) {
 	if f.Comments != nil {
 		for _, c := range f.Comments {
 			var namespacePrefix string
-			rootapi := &swagger.Swagger{
+			rootapi := swagger.Swagger{
 				Infos:          swagger.Information{},
 				SwaggerVersion: "2.0",
 			}
@@ -206,7 +208,7 @@ func GenerateDocs(curpath string) {
 				if strings.HasPrefix(s, "@NamespacePrefix") {
 					namespacePrefix = strings.TrimSpace(s[len("@NamespacePrefix"):])
 					if _, exist := rootapiMap[namespacePrefix]; !exist {
-						rootapiMap[namespacePrefix] = rootapi
+						rootapiMap[namespacePrefix] = &rootapi
 					}
 				} else if strings.HasPrefix(s, "@APIVersion") {
 					rootapi.Infos.Version = strings.TrimSpace(s[len("@APIVersion"):])
@@ -293,10 +295,10 @@ func GenerateDocs(curpath string) {
 				}
 			}
 
-			// when namespacePrefix not defined, then add default namespacePrefix
-			if _, exist := rootapiMap[namespacePrefix]; !exist {
+			_, namespacePrefixExist := rootapiMap[namespacePrefix]
+			if !namespacePrefixExist && !rootapiSingle {
 				rootapiSingle = true
-				rootapiDefault = *rootapi
+				rootapiDefault = rootapi
 			}
 		}
 	}
@@ -340,7 +342,7 @@ func GenerateDocs(curpath string) {
 								}
 							}
 
-							if !rootapiSingle && rootapi.BasePath == "" {
+							if rootapi.BasePath == "" {
 								rootapi.BasePath = version
 							}
 
@@ -350,7 +352,7 @@ func GenerateDocs(curpath string) {
 									var controllerName string
 									if selname := pp.Fun.(*ast.SelectorExpr).Sel.String(); selname == "NSNamespace" {
 										s, params := analyseNewNamespace(pp)
-										if rootapiSingle {
+										if rootapi.BasePath == "" {
 											s = path.Join(version, s)
 										}
 
@@ -420,6 +422,8 @@ func GenerateDocs(curpath string) {
 			panic(err)
 		}
 	}
+
+	modifySwaggerIndexFile(curpath, rootapiSingle, rootapiMap)
 }
 
 // analyseNewNamespace returns version and the others params
@@ -1507,4 +1511,57 @@ func checkAndLoadPackage(imports []*ast.ImportSpec, realType, curPkgName string)
 	}
 
 	pkgLoadedCache[pkgPath] = struct{}{}
+}
+
+func modifySwaggerIndexFile(curpath string, rootapiSingle bool, rootapiMap map[string]*swagger.Swagger) {
+	swaggerIndexFilename := "index.html"
+	swaggerIndexFullname := path.Join(curpath, "swagger", swaggerIndexFilename)
+
+	swaggerJsonFilename := "swagger.json"
+	swaggerUIBundleSign := `SwaggerUIBundle(`
+	var swaggerUIBundleSignPass bool
+
+	if _, err := os.Stat(swaggerIndexFullname); !os.IsNotExist(err) {
+		var swaggerJsonUrl string
+		if rootapiSingle {
+			swaggerJsonUrl = fmt.Sprintf(`        url: "%s",`, swaggerJsonFilename)
+		} else {
+			urls := make([]string, 0)
+			for namespace, _ := range rootapiMap {
+				namespace = strings.TrimLeft(namespace, "/")
+				urls = append(urls, fmt.Sprintf(`{url: "%s", name: "%s"}`, path.Join(namespace, swaggerJsonFilename), namespace))
+			}
+			swaggerJsonUrl = fmt.Sprintf(`        urls: [%s],`, strings.Join(urls, ", "))
+		}
+
+		var indexFileContent string
+		if f, err := os.Open(swaggerIndexFullname); err == nil {
+			defer f.Close()
+
+			buf := bufio.NewReader(f)
+			for {
+				line, _, c := buf.ReadLine()
+				if c == io.EOF {
+					break
+				}
+
+				if strings.Contains(string(line), swaggerUIBundleSign) {
+					swaggerUIBundleSignPass = true
+				}
+				if swaggerUIBundleSignPass && (strings.Contains(string(line), "url:") || strings.Contains(string(line), "urls:")) {
+					indexFileContent += swaggerJsonUrl + "\n"
+				} else {
+					indexFileContent += string(line) + "\n"
+				}
+			}
+		}
+
+		if fw, err := os.OpenFile(swaggerIndexFullname, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666); err == nil {
+			defer fw.Close()
+
+			w := bufio.NewWriter(fw)
+			w.WriteString(indexFileContent)
+			w.Flush()
+		}
+	}
 }
