@@ -56,12 +56,17 @@ const (
 	astTypeMap    = "map"
 )
 
+const defaultNamespacePrefix = ""
+
 var pkgCache map[string]struct{} //pkg:controller:function:comments comments: key:value
 var controllerComments map[string]string
 var importlist map[string]string
 var controllerList map[string]map[string]*swagger.Item //controllername Paths items
 var modelsList map[string]map[string]swagger.Schema
-var rootapi swagger.Swagger
+
+var rootapiSingle = false
+var rootapiDefault swagger.Swagger
+var rootapiMap map[string]*swagger.Swagger // version, swagger
 var astPkgs []*ast.Package
 var pkgLoadedCache map[string]struct{}
 
@@ -106,6 +111,7 @@ func init() {
 	importlist = make(map[string]string)
 	controllerList = make(map[string]map[string]*swagger.Item)
 	modelsList = make(map[string]map[string]swagger.Schema)
+	rootapiMap = make(map[string]*swagger.Swagger)
 	astPkgs = make([]*ast.Package, 0)
 	pkgLoadedCache = make(map[string]struct{})
 }
@@ -188,14 +194,21 @@ func GenerateDocs(curpath string) {
 		beeLogger.Log.Fatalf("Error while parsing router.go: %s", err)
 	}
 
-	rootapi.Infos = swagger.Information{}
-	rootapi.SwaggerVersion = "2.0"
-
 	// Analyse API comments
 	if f.Comments != nil {
 		for _, c := range f.Comments {
+			var namespacePrefix string
+			rootapi := &swagger.Swagger{
+				Infos:          swagger.Information{},
+				SwaggerVersion: "2.0",
+			}
 			for _, s := range strings.Split(c.Text(), "\n") {
-				if strings.HasPrefix(s, "@APIVersion") {
+				if strings.HasPrefix(s, "@NamespacePrefix") {
+					namespacePrefix = strings.TrimSpace(s[len("@NamespacePrefix"):])
+					if _, exist := rootapiMap[namespacePrefix]; !exist {
+						rootapiMap[namespacePrefix] = rootapi
+					}
+				} else if strings.HasPrefix(s, "@APIVersion") {
 					rootapi.Infos.Version = strings.TrimSpace(s[len("@APIVersion"):])
 				} else if strings.HasPrefix(s, "@Title") {
 					rootapi.Infos.Title = strings.TrimSpace(s[len("@Title"):])
@@ -279,6 +292,12 @@ func GenerateDocs(curpath string) {
 					rootapi.Security = append(rootapi.Security, getSecurity(s))
 				}
 			}
+
+			// when namespacePrefix not defined, then add default namespacePrefix
+			if _, exist := rootapiMap[namespacePrefix]; !exist {
+				rootapiSingle = true
+				rootapiDefault = *rootapi
+			}
 		}
 	}
 	// Analyse controller package
@@ -289,6 +308,7 @@ func GenerateDocs(curpath string) {
 		}
 		analyseControllerPkg(localName, im.Path.Value)
 	}
+
 	for _, d := range f.Decls {
 		switch specDecl := d.(type) {
 		case *ast.FuncDecl:
@@ -302,21 +322,43 @@ func GenerateDocs(curpath string) {
 							if !selOK || selExpr.Sel.Name != "NewNamespace" {
 								continue
 							}
+
 							version, params := analyseNewNamespace(v)
-							if rootapi.BasePath == "" && version != "" {
+							var rootapi *swagger.Swagger
+							if rootapiSingle {
+								rootapi = &rootapiDefault
+							} else {
+								_rootapi, rootapiExist := rootapiMap[version]
+								if !rootapiExist {
+									rootapi = &swagger.Swagger{
+										Infos:          swagger.Information{},
+										SwaggerVersion: "2.0",
+									}
+									rootapiMap[version] = rootapi
+								} else {
+									rootapi = _rootapi
+								}
+							}
+
+							if !rootapiSingle && rootapi.BasePath == "" {
 								rootapi.BasePath = version
 							}
+
 							for _, p := range params {
 								switch pp := p.(type) {
 								case *ast.CallExpr:
 									var controllerName string
 									if selname := pp.Fun.(*ast.SelectorExpr).Sel.String(); selname == "NSNamespace" {
 										s, params := analyseNewNamespace(pp)
+										if rootapiSingle {
+											s = path.Join(version, s)
+										}
+
 										for _, sp := range params {
 											switch pp := sp.(type) {
 											case *ast.CallExpr:
 												if pp.Fun.(*ast.SelectorExpr).Sel.String() == "NSInclude" {
-													controllerName = analyseNSInclude(s, pp)
+													controllerName = analyseNSInclude(s, pp, rootapi)
 													if v, ok := controllerComments[controllerName]; ok {
 														rootapi.Tags = append(rootapi.Tags, swagger.Tag{
 															Name:        strings.Trim(s, "/"),
@@ -327,7 +369,7 @@ func GenerateDocs(curpath string) {
 											}
 										}
 									} else if selname == "NSInclude" {
-										controllerName = analyseNSInclude("", pp)
+										controllerName = analyseNSInclude("", pp, rootapi)
 										if v, ok := controllerComments[controllerName]; ok {
 											rootapi.Tags = append(rootapi.Tags, swagger.Tag{
 												Name:        controllerName, // if the NSInclude has no prefix, we use the controllername as the tag
@@ -344,26 +386,39 @@ func GenerateDocs(curpath string) {
 			}
 		}
 	}
-	os.Mkdir(path.Join(curpath, "swagger"), 0755)
-	fd, err := os.Create(path.Join(curpath, "swagger", "swagger.json"))
-	if err != nil {
-		panic(err)
+
+	if rootapiSingle {
+		rootapiMap[defaultNamespacePrefix] = &rootapiDefault
 	}
-	fdyml, err := os.Create(path.Join(curpath, "swagger", "swagger.yml"))
-	if err != nil {
-		panic(err)
-	}
-	defer fdyml.Close()
-	defer fd.Close()
-	dt, err := json.MarshalIndent(rootapi, "", "    ")
-	dtyml, erryml := yaml.Marshal(rootapi)
-	if err != nil || erryml != nil {
-		panic(err)
-	}
-	_, err = fd.Write(dt)
-	_, erryml = fdyml.Write(dtyml)
-	if err != nil || erryml != nil {
-		panic(err)
+
+	for version, api := range rootapiMap {
+		api.Definitions = rootapiDefault.Definitions
+
+		dir := path.Join(curpath, "swagger", version)
+		os.MkdirAll(dir, 0755)
+
+		fd, err := os.Create(path.Join(dir, "swagger.json"))
+		if err != nil {
+			panic(err)
+		}
+		defer fd.Close()
+
+		fdyml, err := os.Create(path.Join(dir, "swagger.yml"))
+		if err != nil {
+			panic(err)
+		}
+		defer fdyml.Close()
+
+		dt, err := json.MarshalIndent(api, "", "    ")
+		dtyml, erryml := yaml.Marshal(api)
+		if err != nil || erryml != nil {
+			panic(err)
+		}
+		_, err = fd.Write(dt)
+		_, erryml = fdyml.Write(dtyml)
+		if err != nil || erryml != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -382,7 +437,7 @@ func analyseNewNamespace(ce *ast.CallExpr) (first string, others []ast.Expr) {
 	return
 }
 
-func analyseNSInclude(baseurl string, ce *ast.CallExpr) string {
+func analyseNSInclude(baseurl string, ce *ast.CallExpr, rootapi *swagger.Swagger) string {
 	cname := ""
 	for _, p := range ce.Args {
 		var x *ast.SelectorExpr
@@ -964,16 +1019,16 @@ L:
 
 	if m.Title == "" {
 		// Don't log when error has already been logged
-		if _, found := rootapi.Definitions[str]; !found {
+		if _, found := rootapiDefault.Definitions[str]; !found {
 			beeLogger.Log.Warnf("Cannot find the object: %s", str)
 		}
 		m.Title = objectname
 		// TODO remove when all type have been supported
 	}
-	if len(rootapi.Definitions) == 0 {
-		rootapi.Definitions = make(map[string]swagger.Schema)
+	if len(rootapiDefault.Definitions) == 0 {
+		rootapiDefault.Definitions = make(map[string]swagger.Schema)
 	}
-	rootapi.Definitions[str] = m
+	rootapiDefault.Definitions[str] = m
 	return str, m, realTypes
 }
 
@@ -992,7 +1047,7 @@ func parseObject(imports []*ast.ImportSpec, d *ast.Object, k string, m *swagger.
 			m.Format = typeFormat[0]
 		} else {
 			objectName := packageName + "." + fmt.Sprint(t.Elt)
-			if _, ok := rootapi.Definitions[objectName]; !ok {
+			if _, ok := rootapiDefault.Definitions[objectName]; !ok {
 				objectName, _, _ = getModel(objectName)
 			}
 			m.Items = &swagger.Schema{
