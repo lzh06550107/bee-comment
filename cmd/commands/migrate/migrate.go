@@ -31,6 +31,11 @@ import (
 	beeLogger "github.com/beego/bee/v2/logger"
 )
 
+// 主要用于执行数据库迁移操作。它提供了多个命令来帮助管理数据库的版本变化，包括：
+// upgrade: 应用所有未执行的迁移。
+// rollback: 回滚最近的迁移。
+// reset: 回滚所有迁移。
+// refresh: 回滚所有迁移并重新执行。
 var CmdMigrate = &commands.Command{
 	UsageLine: "migrate [Command]",
 	Short:     "Runs database migrations",
@@ -68,25 +73,31 @@ func init() {
 }
 
 // runMigration is the entry point for starting a migration
+// 解析命令行参数，并执行相应的迁移操作
 func RunMigration(cmd *commands.Command, args []string) int {
+	// 获取当前工作目录
 	currpath, _ := os.Getwd()
 
 	// Getting command line arguments
+	// 如果命令行参数 args 非空，则调用 cmd.Flag.Parse(args[1:]) 来解析后续参数
 	if len(args) != 0 {
 		cmd.Flag.Parse(args[1:])
 	}
+	// 如果没有指定数据库驱动 (mDriver)，则从配置文件中获取或者默认为 mysql
 	if mDriver == "" {
 		mDriver = utils.DocValue(config.Conf.Database.Driver)
 		if mDriver == "" {
 			mDriver = "mysql"
 		}
 	}
+	// 如果没有指定数据库连接字符串 (mConn)，则从配置文件中获取或者默认设置为 root:@tcp(127.0.0.1:3306)/test
 	if mConn == "" {
 		mConn = utils.DocValue(config.Conf.Database.Conn)
 		if mConn == "" {
 			mConn = "root:@tcp(127.0.0.1:3306)/test"
 		}
 	}
+	// 如果没有指定迁移文件存放目录 (mDir)，则默认使用 database/migrations
 	if mDir == "" {
 		mDir = utils.DocValue(config.Conf.Database.Dir)
 		if mDir == "" {
@@ -102,6 +113,7 @@ func RunMigration(cmd *commands.Command, args []string) int {
 
 	dirRune := []rune(dirStr)
 
+	//  如果迁移目录不是绝对路径，则将其与当前工作目录结合，生成完整路径
 	if dirRune[0] != '/' && dirRune[1] != ':' {
 		dirStr = path.Join(currpath, dirStr)
 	}
@@ -131,10 +143,13 @@ func RunMigration(cmd *commands.Command, args []string) int {
 }
 
 // migrate generates source code, build it, and invoke the binary who does the actual migration
+// 处理迁移流程，通过生成源文件、编译二进制文件并执行迁移
 func migrate(goal, currpath, driver, connStr, dir string) {
+	// 如果传入的迁移目录 (dir) 为空，则默认将迁移目录设置为 database/migrations，并与当前工作目录 (currpath) 合并成完整路径
 	if dir == "" {
 		dir = path.Join(currpath, "database", "migrations")
 	}
+	// 根据操作系统的类型（Windows 或其他），决定迁移二进制文件的后缀。如果是 Windows 系统，则后缀为 .exe，否则没有后缀
 	postfix := ""
 	if runtime.GOOS == "windows" {
 		postfix = ".exe"
@@ -143,23 +158,31 @@ func migrate(goal, currpath, driver, connStr, dir string) {
 	source := binary + ".go"
 
 	// Connect to database
+	// 使用传入的数据库驱动 (driver) 和连接字符串 (connStr) 打开数据库连接。如果连接失败，记录日志并终止程序
 	db, err := sql.Open(driver, connStr)
 	if err != nil {
 		beeLogger.Log.Fatalf("Could not connect to database using '%s': %s", connStr, err)
 	}
 	defer db.Close()
 
+	// 检查迁移表的存在性和结构： 调用 checkForSchemaUpdateTable 函数检查数据库中是否存在用于管理迁移的表（如 migrations）。如果没有该表，则会创建一个
 	checkForSchemaUpdateTable(db, driver)
+	// 获取最新的迁移信息： 调用 getLatestMigration 函数获取数据库中最新的迁移记录，返回迁移文件名和时间戳。这些信息会在生成迁移源文件时使用
 	latestName, latestTime := getLatestMigration(db, goal)
+	// 生成迁移源文件： 根据获取到的迁移信息，调用 writeMigrationSourceFile 函数生成用于执行迁移操作的 Go 源代码文件
 	writeMigrationSourceFile(dir, source, driver, connStr, latestTime, latestName, goal)
+	// 编译迁移二进制文件： 调用 buildMigrationBinary 函数，通过 go build 编译生成一个二进制文件，用于执行迁移操作
 	buildMigrationBinary(dir, binary)
+	// 执行迁移二进制文件： 调用 runMigrationBinary 函数运行刚刚编译好的二进制文件，执行迁移操作（如升级、回滚等）
 	runMigrationBinary(dir, binary)
+	// 删除临时文件： 迁移操作完成后，删除临时生成的源代码文件和二进制文件
 	removeTempFile(dir, source)
 	removeTempFile(dir, binary)
 }
 
 // checkForSchemaUpdateTable checks the existence of migrations table.
 // It checks for the proper table structures and creates the table using MYSQL_MIGRATION_DDL if it does not exist.
+// 确保迁移表存在并且是最新的
 func checkForSchemaUpdateTable(db *sql.DB, driver string) {
 	showTableSQL := showMigrationsTableSQL(driver)
 	if rows, err := db.Query(showTableSQL); err != nil {
@@ -279,6 +302,7 @@ func getLatestMigration(db *sql.DB, goal string) (file string, createdAt int64) 
 }
 
 // writeMigrationSourceFile create the source file based on MIGRATION_MAIN_TPL
+// 根据模板生成迁移的 Go 文件
 func writeMigrationSourceFile(dir, source, driver, connStr string, latestTime int64, latestName string, task string) {
 	changeDir(dir)
 	if f, err := os.OpenFile(source, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0666); err != nil {
@@ -298,6 +322,7 @@ func writeMigrationSourceFile(dir, source, driver, connStr string, latestTime in
 }
 
 // buildMigrationBinary changes directory to database/migrations folder and go-build the source
+// 编译迁移的 Go 源文件为二进制文件
 func buildMigrationBinary(dir, binary string) {
 	changeDir(dir)
 	_ = exec.Command("go", "mod", "tidy").Run()
@@ -312,6 +337,7 @@ func buildMigrationBinary(dir, binary string) {
 }
 
 // runMigrationBinary runs the migration program who does the actual work
+// 执行编译后的迁移二进制文件
 func runMigrationBinary(dir, binary string) {
 	changeDir(dir)
 	cmd := exec.Command("./" + binary)
@@ -335,6 +361,7 @@ func changeDir(dir string) {
 }
 
 // removeTempFile removes a file in dir
+// 在迁移完成后清理临时生成的文件
 func removeTempFile(dir, file string) {
 	changeDir(dir)
 	if err := os.Remove(file); err != nil {

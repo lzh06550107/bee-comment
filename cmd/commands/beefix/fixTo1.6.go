@@ -30,6 +30,7 @@ import (
 )
 
 // fixTo16 upgrade beego to 1.6
+// 是实际执行代码修复的函数，它会遍历项目中的所有文件，并对符合条件的文件进行修复。
 func fixTo16(cmd *commands.Command, args []string) int {
 	output := cmd.Out()
 
@@ -167,6 +168,8 @@ var rules = []string{
 }
 
 func fixFile(file string) error {
+	// 该函数会根据 rules 数组中提供的替换规则，在文件内容中查找并替换特定的字符串
+	// rules 数组包含了旧字段和新字段的映射。例如，beego.AppName 被替换为 beego.BConfig.AppName
 	rp := strings.NewReplacer(rules...)
 	content, err := ioutil.ReadFile(file)
 	if err != nil {
@@ -176,16 +179,17 @@ func fixFile(file string) error {
 
 	// Forword the RequestBody from the replace
 	// "Input.Request", "Input.Context.Request",
+	// 通过 strings.Replace 替换了 Input.Context.RequestBody 为 Input.RequestBody
 	fixed = strings.Replace(fixed, "Input.Context.RequestBody", "Input.RequestBody", -1)
 
-	// Regexp replace
+	// Regexp replace 正则表达式替换
 	pareg := regexp.MustCompile(`(Input.Params\[")(.*)("])`)
 	fixed = pareg.ReplaceAllString(fixed, "Input.Param(\"$2\")")
 	pareg = regexp.MustCompile(`(Input.Data\[\")(.*)(\"\])(\s)(=)(\s)(.*)`)
 	fixed = pareg.ReplaceAllString(fixed, "Input.SetData(\"$2\", $7)")
 	pareg = regexp.MustCompile(`(Input.Data\[\")(.*)(\"\])`)
 	fixed = pareg.ReplaceAllString(fixed, "Input.Data(\"$2\")")
-	// Fix the cache object Put method
+	// Fix the cache object Put method 修复缓存对象的 Put 方法
 	pareg = regexp.MustCompile(`(\.Put\(\")(.*)(\",)(\s)(.*)(,\s*)([^\*.]*)(\))`)
 	if pareg.MatchString(fixed) && strings.HasSuffix(file, ".go") {
 		fixed = pareg.ReplaceAllString(fixed, ".Put(\"$2\", $5, $7*time.Second)")
@@ -210,8 +214,8 @@ func fixFile(file string) error {
 	if strings.Contains(file, "docs.go") {
 		fixed = strings.Replace(fixed, "v.Apis", "v.APIs", -1)
 	}
-	// Replace the config file
-	if strings.HasSuffix(file, ".conf") {
+	// Replace the config file 配置文件的修复
+	if strings.HasSuffix(file, ".conf") { // 如果是 .conf 配置文件，会对一些字段名进行替换，使其符合新的 Beego 配置项命名规范
 		fixed = strings.Replace(fixed, "HttpCertFile", "HTTPSCertFile", -1)
 		fixed = strings.Replace(fixed, "HttpKeyFile", "HTTPSKeyFile", -1)
 		fixed = strings.Replace(fixed, "EnableHttpListen", "HTTPEnable", -1)
@@ -222,6 +226,7 @@ func fixFile(file string) error {
 		fixed = strings.Replace(fixed, "AdminHttpPort", "AdminPort", -1)
 		fixed = strings.Replace(fixed, "HttpServerTimeOut", "ServerTimeOut", -1)
 	}
+	// 在完成替换之后，函数会清空原文件内容，并将修改后的内容写回文件
 	err = os.Truncate(file, 0)
 	if err != nil {
 		return err

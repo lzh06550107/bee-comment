@@ -1,0 +1,1314 @@
+= bee 工具简介
+
+bee 工具是一个为了协助快速开发 beego 项目而创建的项目，通过 bee 您可以很容易的进行 beego 项目的创建、热编译、开发、测试、和部署。
+
+== bee 工具的安装
+
+您可以通过如下的方式安装 bee 工具：
+
+[source,bash]
+----
+# go 1.16 以前的版本
+go get -u github.com/beego/bee/v2
+
+# go 1.16及以后的版本
+go install github.com/beego/bee/v2@latest
+----
+
+安装完之后，`bee` 可执行文件默认存放在 `$GOPATH/bin` 里面，所以您需要把 `$GOPATH/bin` 添加到您的环境变量中，才可以进行下一步。
+
+[NOTE]
+====
+如果你本机设置了 `GOBIN`，那么上面的 `bee` 命令就会安装到 `GOBIN` 目录下，所以我们需要在环境变量中添加相关的配置信息。
+====
+
+== bee 工具命令详解
+
+我们在命令行输入 `bee`，可以看到如下的信息：
+
+[source, text]
+----
+$ bee
+Bee is a Fast and Flexible tool for managing your Beego Web Application.
+
+You are using bee for beego v2.x. If you are working on beego v1.x, please downgrade version to bee v1.12.0
+
+USAGE
+    bee command [arguments]
+
+AVAILABLE COMMANDS
+
+    dev         Commands which used to help to develop beego and bee
+    update      Update Bee
+    version     Prints the current Bee version
+    bale        Transforms non-Go files to Go source files
+    fix         Fixes your application by making it compatible with newer versions of Beego
+    dockerize   Generates a Dockerfile and docker-compose.yaml for your Beego application
+    migrate     Runs database migrations
+    new         Creates a Beego application
+    pack        Compresses a Beego application into a single file
+    rs          Run customized scripts
+    server      serving static content over HTTP on port
+    run         Run the application by starting a local development server
+    pro         Source code generator
+    api         Creates a Beego API application
+    generate    Source code generator
+    hprose      Creates an RPC application based on Hprose and Beego frameworks
+    dlv         Start a debugging session using Delve
+
+Use bee help [command] for more information about a command.
+
+ADDITIONAL HELP TOPICS
+
+
+Use bee help [topic] for more information about that topic.
+----
+
+=== dev 命令
+
+它包含一些帮助开发者进行开发、构建和测试 Beego 应用的命令：
+
+==== githook - 准备 Git Hooks
+
+这个命令用于为项目准备 Git 钩子（Git hooks），通过配置 Git 钩子可以在特定的 Git 操作（如提交、推送）时自动触发一些动作，例如代码格式化、检查等。
+
+`bee dev githook` 命令的作用是为你的 Beego 项目准备默认的 Git 钩子。通过这个命令，你可以在 Git 提交之前或提交之后自动执行一些任务，如：
+
+* 格式化代码：确保代码提交符合代码风格规范。
+* 检查代码规范：检查提交的代码是否符合项目的代码规范。
+
+用途：在开发过程中，自动执行某些操作来规范代码提交，避免常见的错误。
+
+[source, bash]
+----
+bee dev githook
+----
+
+执行这个命令后，`bee` 会在你的项目中生成一组 Git 钩子文件，并将它们配置到 `.git/hooks` 目录中。这些钩子文件会在特定的 Git 操作（如提交或推送）时被触发。
+
+preCommit 命令包括：
+
+* goimports -w -format-only ./：使用 goimports 自动格式化 Go 代码，并将修改写回文件。
+* ineffassign .：使用 ineffassign 查找并报告 Go 代码中无用的赋值操作。
+* staticcheck：运行 staticcheck 静态分析工具，使用特定的配置，禁用了某些检查（通过 -show-ignored 参数显示被忽略的检查，-checks 参数禁用一些检查）。
+
+把 `preCommit` 内容写入到 `.git/hooks/pre-commit` 文件中。
+
+==== Git 钩子文件
+
+执行 `bee dev githook` 后，会在 `.git/hooks` 目录下生成一些文件。例如：
+
+* `pre-commit`：在 Git 执行提交操作之前触发。通常用于检查代码、格式化代码等。(当前已经实现)
+* `commit-msg`：在提交消息提交时触发，用于检查提交消息的格式是否符合要求。
+* `pre-push`：在 Git 执行推送操作之前触发。可以用来运行测试，确保推送的代码是经过验证的。
+* `post-commit`：在提交代码后触发。
+* `post-merge`：在合并分支后触发。
+
+这些文件会包含一些默认的钩子代码，你可以根据需要进行修改和扩展。
+
+==== 示例
+
+1. pre-commit 钩子
++
+--
+默认情况下，`pre-commit` 钩子可能会包含一些用于格式化代码和检查代码的任务。例如：
+
+[source, bash]
+----
+#!/bin/sh
+# Format Go code before committing
+go fmt ./...
+
+# Lint Go code (you可以使用其他工具，如 golint)
+golint ./...
+----
+
+这个钩子会在每次提交前自动执行 `go fmt` 命令来格式化代码，并使用 `golint` 来检查代码风格。这样可以确保所有提交的代码都符合规范。
+--
+
+2. commit-msg 钩子
++
+--
+`commit-msg` 钩子可以用来检查提交消息是否符合特定格式。比如，你可以强制要求提交消息以某种格式开头（如 `feat:` 或 `fix:`）：
+
+[source, bash]
+----
+#!/bin/sh
+# Check if commit message starts with a type (e.g., feat:, fix:)
+COMMIT_MSG=$(cat $1)
+if ! echo "$COMMIT_MSG" | grep -qE '^(feat|fix|docs|style|refactor|test|chore):'; then
+  echo "Commit message must start with 'feat:', 'fix:', etc."
+  exit 1
+fi
+----
+
+这个钩子会检查每个提交消息的格式，确保提交消息符合预定的格式要求。
+--
+
+3. pre-push 钩子
++
+--
+`pre-push` 钩子通常用于在推送代码之前运行测试，确保代码没有破坏现有功能。例如：
+
+[source, bash]
+----
+#!/bin/sh
+# Run tests before pushing code
+go test ./...
+if [ $? -ne 0 ]; then
+  echo "Tests failed. Aborting push."
+  exit 1
+fi
+----
+
+这个钩子会在每次推送代码之前运行所有测试。如果测试失败，则推送操作会被阻止。
+--
+
+=== update 命令
+
+自动运行命令 `go get -u github.com/beego/bee/v2` 进行自我更新。
+
+这意味着 Beego 工具（`bee`）会自动执行 `go get -u` 命令来更新其自身的版本。`go get -u` 会拉取并安装指定模块的最新版本，从而实现 `bee` 工具的自我更新。
+
+=== version 命令
+
+这个命令是动态获取 `bee` 和 `Go` 的版本，这样一旦用户出现错误，可以通过该命令来查看当前的版本。
+
+[source, bash]
+----
+$ bee version
+______
+| ___ \
+| |_/ /  ___   ___
+| ___ \ / _ \ / _ \
+| |_/ /|  __/|  __/
+\____/  \___| \___| v2.3.0
+
+├── GoVersion : go1.23.3
+├── GOOS      : windows
+├── GOARCH    : amd64
+├── NumCPU    : 8
+├── GOPATH    : C:\Users\Administrator\go
+├── GOROOT    : C:/Program Files/Go
+├── Compiler  : gc
+└── Date      : Tuesday, 3 Dec 2024
+----
+
+=== bale 命令
+
+`bee bale` 命令是 Beego 框架提供的一个命令，用于将静态资源文件（如 JavaScript、CSS、图片等）打包成 Go 源代码文件，这样在部署 Go 应用时，不需要额外携带静态文件，只需要携带生成的 Go 文件即可。打包后的资源会被压缩并内嵌在 Go 可执行文件中。
+
+运行该命令会生成 `bale.go` 文件，该文件会包含所有打包的静态资源，并提供解压这些资源的功能。
+
+==== 配置 bale 命令
+
+`bee bale` 命令会根据配置文件中的目录将静态资源打包成 Go 源代码。在项目的 `conf` 目录下，有一个 `app.conf` 配置文件，你需要在配置文件中添加相关的配置来指定需要打包的静态资源文件夹。
+
+在 `app.conf` 文件中添加如下配置项：
+
+[source, ini]
+.ini
+----
+bale.dirs = static, views   # 指定要打包的静态资源文件夹，可以是多个目录，使用逗号分隔
+bale.ingext = .js, .css, .png, .jpg   # 指定需要打包的文件扩展名，可以是多个扩展名，使用逗号分隔
+----
+
+* bale.dirs：要打包的文件夹，可以指定一个或多个文件夹，如 static 或 views。
+* bale.ingext：要打包的文件类型，可以是 .js、.css、.html、.png 等。
+
+==== 执行 bee bale 命令
+
+在项目根目录下运行以下命令：
+
+[source, bash]
+----
+bee bale
+----
+
+执行该命令后，`bee` 会：
+
+* 遍历 `app.conf` 配置中 bale.dirs 指定的文件夹。
+* 查找符合 `bale.ingext` 配置的文件类型（如 `.js`、`.css` 等）。
+* 将这些文件压缩并生成对应的 Go 源文件，文件会保存在项目的 `bale` 目录下。
+* 生成一个名为 `bale.go` 的 Go 文件，该文件会包含所有打包的静态资源，并提供解压这些资源的功能。
+
+==== 生成的 Go 文件
+
+执行 `bee bale` 命令后，会生成一个 `bale.go` 文件，里面包含了如下内容：
+
+* 每个静态资源的解压函数，例如 `Rindex_js()`。
+* `init()` 函数，用于在应用启动时自动解压这些静态资源。
+
+你可以将 `bale.go` 文件包含到你的项目中，并确保应用在启动时会自动解压和保存静态资源。
+
+==== 使用 bale.go 中的资源
+
+在你的项目代码中，可以使用 `bale.go` 中生成的解压函数（例如 `Rindex_js()`）来获取资源的字节数据，并将其存储到磁盘或直接在应用中使用。
+
+例如，你可以在 `init()` 函数中解压静态资源：
+
+[source, go]
+----
+func init() {
+    // 解压静态资源
+    saveFile("static/index.js", bale.Rindex_js())
+}
+----
+
+==== 部署
+
+当你执行 `bee bale` 后，打包后的资源会作为 Go 代码的一部分嵌入到你的应用中。你只需部署编译后的 Go 可执行文件，而不需要额外携带静态资源文件。这样可以简化部署过程。
+
+=== fix 命令
+
+通过使您的应用程序与 Beego 的较新版本兼容来修复它。通过使用 `bee fix` 命令，Beego 工具能够帮助修复您的应用程序，使其能够与 Beego 的更新版本兼容。
+
+`bee fix` 命令自动修复 Beego 项目中的一些已知问题和代码不兼容性，通常包括以下内容：
+
+* 自动更新 Beego 框架的依赖：包括更新 Go 模块的依赖，确保使用的是正确版本的 Beego。
+* 替换旧的 Beego API：根据新版本的 Beego API，更新项目中的 API 调用。
+* 修改配置文件：更新配置文件中的字段，确保与 Beego 新版本的配置项保持一致。
+* 更新代码中的 import 路径：主要是替换 Beego 相关的旧路径为新版本的路径。
+
+[source, bash]
+----
+$ bee help fix
+USAGE
+  bee fix
+
+OPTIONS
+  -s
+      source version
+
+  -t
+      target version
+
+DESCRIPTION
+  The command 'fix' will try to solve those issues by upgrading your code base
+  to be compatible  with Beego old version
+  -s source version
+  -t target version
+
+  example: bee fix -s 1 -t 2 means that upgrade Beego version from v1.x to v2.x
+----
+
+* fixTo16： 升级到 Beego v1.6 版本。会更新 Beego 的配置项和 API 调用。
+* fix1To2： 升级到 Beego v2 版本。主要修复 Beego v2 引入的重大变化，包括 v1 版本与 v2 版本之间的 API 兼容性问题。
+
+`bee fix` 是 Beego 框架中的一个命令，用于帮助用户将旧版本的 Beego 代码升级为较新的版本。通过运行 `bee fix`，它会对项目中的 Go 源代码文件和配置文件进行自动修改，以便与新的 Beego 版本兼容，尤其是针对 Beego 1.6 版本的变动。
+
+=== dockerize 命令
+
+为您的 Beego 应用程序生成 `Dockerfile` 和 `docker-compose.yaml` 。`bee` 工具可以为你的 Beego 应用自动生成用于构建和部署的 `Dockerfile` 和 `docker-compose.yaml` 文件，帮助你轻松地将 Beego 应用容器化并进行管理。
+
+[source, bash]
+----
+$ bee help dockerize
+USAGE
+  bee dockerize
+
+OPTIONS
+  -baseimage=golang:1.20.2
+      Set the base image of the Docker container.
+
+  -expose=8080
+      Port(s) to expose for the Docker container.
+
+DESCRIPTION
+  Dockerize generates a Dockerfile and docker-compose.yaml for your Beego Web Application.
+  The Dockerfile will compile and run the application.
+  The docker-compose.yaml can be used to build and deploy the generated Dockerfile.
+  Example:
+    $ bee dockerize -expose="3000,80,25"
+----
+
+==== Dockerfile 生成
+
+Dockerfile 用于定义如何从基础镜像构建应用的 Docker 镜像，具体包括：
+
+* 使用指定的 Go 版本构建应用。
+* 将本地应用代码复制到容器中。
+* 安装 Go 依赖并编译应用。
+* 指定应用的暴露端口和启动命令。
+
+[source, dockerfile]
+----
+# Build Golang binary
+FROM {{.BaseImage}} AS build-golang
+
+WORKDIR {{.Appdir}}
+
+COPY . .
+RUN go get -v && go build -v -o /usr/local/bin/{{.Entrypoint}}
+
+EXPOSE {{.Expose}}
+CMD ["{{.Entrypoint}}"]
+----
+
+==== docker-compose.yaml 生成
+
+docker-compose.yaml 用于定义 Docker Compose 服务。生成的文件会指定应用名称、容器的构建目录、容器重启策略和暴露端口。
+
+[source, yaml]
+----
+version: '3'
+networks:
+  {{.Appname}}_network_compose:
+    driver: bridge
+services:
+  {{.Appname}}:
+    container_name: {{.Appname}}
+    build: .
+    restart: unless-stopped
+    networks:
+      {{.Appname}}_network_compose:
+    ports:{{.Expose}}
+----
+
+主要参数说明：
+
+* `-baseimage`：指定 Docker 镜像的基础镜像，默认值为 `golang:1.20.2`。你可以根据自己的需求修改 Go 版本。
+* `-expose`：指定需要暴露的端口，默认是 `8080`。如果应用需要暴露多个端口，可以用逗号分隔，如 `3000,80,25`。
+
+==== 使用示例
+
+[source, bash]
+----
+$ bee dockerize -expose="3000,80,25" -baseimage="golang:1.20.2"
+----
+
+上述命令会生成一个 `Dockerfile` 和 `docker-compose.yaml` 文件，适用于暴露端口 `3000, 80, 25` 的 Beego 应用，并使用 `golang:1.20.2` 作为基础镜像。
+
+=== migrate 命令
+
+`bee migrate` 是 BeeGo 框架中的一个命令，用于管理数据库迁移。数据库迁移（migration）是一个用于更新数据库模式（schema）或数据结构的机制。在开发过程中，数据库的结构可能会发生变化，迁移可以帮助我们轻松地追踪和管理这些变化。
+
+[source, bash]
+----
+$ bee help migrate
+USAGE
+  bee migrate [Command]
+
+OPTIONS
+  -conn
+      Connection string used by the driver to connect to a database instance.
+
+  -dir
+      The directory where the migration files are stored
+
+  -driver
+      Database driver. Either mysql, postgres or sqlite.
+
+DESCRIPTION
+  The command 'migrate' allows you to run database migrations to keep it up-to-date.
+
+  ▶ To run all the migrations:
+
+    $ bee migrate [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-dir="path/to/migration"]
+
+  ▶ To rollback the last migration:
+
+    $ bee migrate rollback [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-dir="path/to/migration"]
+
+  ▶ To do a reset, which will rollback all the migrations:
+
+    $ bee migrate reset [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-dir="path/to/migration"]
+
+  ▶ To update your schema:
+
+    $ bee migrate refresh [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-dir="path/to/migration"]
+----
+
+==== bee migrate 命令的作用
+
+bee migrate 主要用于以下几种操作：
+
+* 执行所有待处理的迁移操作：在数据库中执行所有未执行的迁移。
+* 回滚操作：回滚上一次的迁移操作。
+* 重置操作：回滚所有的迁移操作，恢复到初始状态。
+* 刷新操作：回滚所有迁移，然后重新执行所有迁移。
+
+==== 常用子命令
+
+1. bee migrate（执行所有迁移）
++
+--
+* 默认情况下，`bee migrate` 会执行所有待处理的迁移操作。这通常用于初始化数据库或在应用程序上线前确保数据库的结构是最新的。
+* 该命令会扫描迁移目录，执行所有尚未执行的迁移脚本，并更新数据库结构。
+
+[source, bash]
+----
+bee migrate
+----
+--
+
+2. bee migrate rollback（回滚上一次迁移）
++
+--
+当我们希望撤销最近的一次迁移操作时，可以使用 `rollback` 子命令。它会回滚最近的迁移操作。
+
+[source, bash]
+----
+bee migrate rollback
+----
+--
+
+3. bee migrate reset（回滚所有迁移）
++
+--
+`reset` 命令会回滚所有的迁移操作，将数据库恢复到初始状态。它通常用于开发阶段，特别是在需要重置数据库结构时非常有用。
+
+[source, bash]
+----
+bee migrate reset
+----
+--
+
+4. bee migrate refresh（刷新所有迁移）
++
+--
+`refresh` 命令实际上执行了一个回滚（`rollback`）所有迁移，然后重新执行所有迁移。这对于确保数据库结构完全同步到最新状态非常有用。
+
+[source, bash]
+----
+bee migrate refresh
+----
+--
+
+==== bee migrate 的工作流程
+
+当你执行 `bee migrate` 命令时，BeeGo 会执行以下步骤：
+
+1. 检查数据库连接：首先，BeeGo 会尝试连接到数据库，并根据配置读取数据库连接信息。
+2. 检查迁移表：BeeGo 会检查数据库中是否有用于存储迁移信息的表。这个表通常叫做 `migrations`，用来记录哪些迁移已被应用。
+3. 执行迁移操作：根据目标命令（如 `migrate`、`rollback` 等），BeeGo 会根据迁移表中的记录决定哪些迁移需要执行或回滚。
+4. 更新迁移记录：迁移操作成功完成后，BeeGo 会将迁移操作的记录保存到数据库中，更新迁移表，以确保下次运行时可以跳过已执行过的迁移。
+
+==== 配置文件
+
+`bee migrate` 命令通常会从配置文件（如 `conf/app.conf`）中读取数据库连接信息。常见的配置项有：
+
+* db_driver：数据库驱动，如 mysql、postgres 等。
+* db_conn：数据库连接字符串，如 root:password@tcp(127.0.0.1:3306)/dbname。
+* db_dir：迁移文件的目录，通常是项目中的 database/migrations。
+
+例如，在 `app.conf` 中，你可能会看到类似如下的配置：
+
+[source, ini]
+----
+db_driver = mysql
+db_conn = root:@tcp(127.0.0.1:3306)/mydb
+db_dir = ./database/migrations
+----
+
+==== 迁移文件
+
+迁移文件通常是 Go 文件，它们定义了迁移的具体操作（例如创建表、修改字段、删除字段等）。每个迁移文件包含一个 `Up` 和 `Down` 函数，用来定义向上（迁移）和向下（回滚）迁移的操作。
+
+一个简单的迁移文件可能如下所示：
+
+[source, go]
+----
+package migrations
+
+import (
+	"github.com/astaxie/beego/migration"
+)
+
+// DO NOT MODIFY
+type MyMigration_20211201_101010 struct {
+	migration.Migration
+}
+
+// Up 迁移向上操作
+func (m *MyMigration_20211201_101010) Up() {
+	// 执行迁移操作，例如创建表
+	m.SQL("CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));")
+}
+
+// Down 迁移向下操作
+func (m *MyMigration_20211201_101010) Down() {
+	// 执行回滚操作，例如删除表
+	m.SQL("DROP TABLE users;")
+}
+----
+
+在上面的例子中，`Up` 函数定义了向上迁移的操作，`Down` 函数定义了回滚操作。
+
+=== new 命令
+
+`bee new` 是 Beego 框架提供的命令，用于快速创建一个新的 Beego 应用。通过这个命令，开发者可以快速生成一个结构化的 Beego 项目，其中包含了 Beego 框架所需的基本文件和目录结构。下面是对 `bee new` 命令的详细解析。
+
+[source, bash]
+----
+$ bee help new
+USAGE
+  bee new [appname] [-gopath=false] [-beego=v2.1.0]
+
+OPTIONS
+  -beego
+      set beego version,only take effect by go mod
+
+  -gopath
+      Support go path,default false
+
+DESCRIPTION
+  Creates a Beego application for the given app name in the current directory.
+  now defaults to generating as a go modules project
+  The command 'new' creates a folder named [appname] [-gopath=false] [-beego=v1.12.3] and generates the following structure:
+
+            ├── main.go
+            ├── go.mod
+            ├── conf
+            │     └── app.conf
+            ├── controllers
+            │     └── default.go
+            ├── models
+            ├── routers
+            │     └── router.go
+            ├── tests
+            │     └── default_test.go
+            ├── static
+            │     └── js
+            │     └── css
+            │     └── img
+            └── views
+                  └── index.tpl
+----
+
+参数说明：
+
+* `appname`: 必须指定的参数，表示新应用的名称。
+* `-gopath`: 可选参数，默认为 `false`。如果设置为 `true`，则会创建一个支持 `GOPATH` 的传统 Go 项目。如果设置为 `false`（默认值），则使用 Go Modules。
+* `-beego`: 可选参数，用来指定 Beego 版本，只有在 `go mod` 模式下才会生效。
+
+==== 使用示例
+
+[source, bash]
+----
+bee new myapp -gopath=false -beego=v2.1.0
+----
+
+该命令将在当前目录下创建一个名为 myapp 的 Beego 应用，并使用 Go Modules 和指定的 Beego 版本 v2.1.0。
+
+==== bee new 生成的文件和目录结构
+
+假设你执行了 `bee new myapp` 命令，生成的项目结构大致如下：
+
+[source, bash]
+----
+myapp/
+│
+├── conf/
+│   └── app.conf               # Beego 配置文件
+├── controllers/
+│   └── default.go             # 默认控制器
+├── models/                    # 模型目录
+├── routers/
+│   └── router.go              # 路由配置文件
+├── static/
+│   ├── js/
+│   │   └── reload.min.js      # JavaScript 文件
+│   ├── css/                   # CSS 文件目录
+│   └── img/                   # 图片文件目录
+├── tests/
+│   └── default_test.go        # 默认单元测试
+├── views/
+│   └── index.tpl              # 默认视图模板
+├── go.mod                     # Go Modules 配置文件
+└── main.go                    # Beego 应用入口文件
+----
+
+=== pack 命令
+
+`pack` 目录用来发布应用的时候打包，会把项目打包成 `zip` 包，这样我们部署的时候直接把打包之后的项目上传，解压就可以部署了：
+
+[source, bash]
+----
+$ bee help pack
+USAGE
+  bee pack
+
+OPTIONS
+  -a
+      Set the application name. Defaults to the dir name.
+
+  -b=true
+      Tell the command to do a build for the current platform. Defaults to true.
+
+  -ba
+      Specify additional args for Go build.
+
+  -be=[]
+      Specify additional env variables for Go build. e.g. GOARCH=arm.
+
+  -exp=.
+      Set prefixes of paths to be excluded. Uses a column (:) as separator.
+
+  -exr=[]
+      Set a regular expression of files to be excluded.
+
+  -exs=.go:.DS_Store:.tmp
+      Set suffixes of paths to be excluded. Uses a column (:) as separator.
+
+  -f=tar.gz
+      Set file format. Either tar.gz or zip. Defaults to tar.gz.
+
+  -fs=false
+      Tell the command to follow symlinks. Defaults to false.
+
+  -o
+      Set the compressed file output path. Defaults to the current path.
+
+  -p
+      Set the application path. Defaults to the current path.
+
+  -ss=false
+      Tell the command to skip symlinks. Defaults to false.
+
+  -v=false
+      Be more verbose during the operation. Defaults to false.
+
+DESCRIPTION
+  Pack is used to compress Beego applications into a tarball/zip file.
+  This eases the deployment by directly extracting the file to a server.
+
+  Example:
+    $ bee pack -v -ba="-ldflags '-s -w'"
+----
+
+标志位和参数:
+
+* -p：应用程序的路径（默认为当前目录）。
+* -a：应用程序的名称（默认为目录名）。
+* -o：压缩文件的输出路径。
+* -f：指定输出文件的格式（tar.gz 或 zip）。
+* -exp：指定需要排除的路径前缀。
+* -exs：指定需要排除的路径后缀。
+* -exr：指定正则表达式匹配的文件，排除这些文件。
+* -v：启用详细模式。
+* -b：控制是否在打包之前构建应用程序（默认为 true）。
+* -ba="-ldflags '-s -w'" 构建参数，以优化生成的二进制文件。
+
+==== 示例用法
+
+[source, bash]
+----
+$ bee pack -v -ba="-ldflags '-s -w'" -p /path/to/app -o /output/directory -f tar.gz
+----
+
+这个命令会将位于 `/path/to/app` 的 Beego 应用打包成 `.tar.gz` 格式，并输出到 `/output/directory` 目录。如果设置了 `-ba="-ldflags '-s -w'"`，会将这些参数传递给 Go 构建过程，以优化生成的二进制文件。
+
+=== rs 命令
+
+运行自定义脚本。
+
+[source, bash]
+----
+$ bee help rs
+USAGE
+  bee rs
+
+DESCRIPTION
+  Run script allows you to run arbitrary commands using Bee.
+  Custom commands are provided from the "scripts" object inside bee.json or Beefile.
+
+  To run a custom command, use: $ bee rs mycmd ARGS
+----
+
+在 `bee rs` 中，`bee.json` 文件用于配置项目的设置，包括一些开发工具的选项。`scripts` 是 `bee.json` 中的一部分，可以用来配置在 Beego 应用运行时执行的脚本。这个功能使你能够在应用启动或重载时，自动执行一些自定义命令或脚本。
+
+假设你的 `bee.json` 文件中配置了 `scripts` 部分，示例如下：
+
+[source, json]
+.bee.json 示例
+----
+{
+  "scripts": {
+    "before_start": [
+      "go fmt ./...",
+      "go lint ./...",
+      "go test ./..."
+    ],
+    "after_reload": [
+      "echo 'Application reloaded successfully'"
+    ]
+  }
+}
+----
+
+* before_start：
+** 这个配置项定义了在应用启动之前要执行的脚本或命令。你可以在此处配置一些需要在应用启动前执行的任务，例如格式化代码、运行静态分析工具等。
+** 示例中，`before_start` 配置了两个命令：
+*** `go fmt ./...`：格式化项目中的 Go 代码。
+*** `go lint ./...`：运行 Go 语言的静态分析工具（如 `golint`）检查代码风格。
+* after_reload：
+** 这个配置项定义了在 Beego 应用重载（如文件变动后自动重启）后要执行的脚本或命令。你可以在此处配置一些在应用重载后要运行的任务。
+** 示例中，`after_reload` 配置了一个简单的命令：`echo 'Application reloaded successfully'`，它会在每次应用重载后输出一条提示信息。
+
+==== 使用场景
+
+`bee.json` 中的 `scripts` 配置项非常适合在开发阶段使用，尤其是当你需要在应用启动或重载时自动执行一些任务时。例如：
+
+* 代码格式化：在每次应用启动或重载时，自动格式化代码，确保代码风格一致。
+* 静态分析：自动运行代码分析工具，如 `golint` 或 `gofmt`，确保代码符合规范。
+* 测试：在应用启动前或重载后运行单元测试，确保应用在开发过程中始终保持正确的状态。
+* 构建任务：自动执行构建任务或清理工作，如删除临时文件、生成文档等。
+
+==== 启用和运行 bee rs 时的行为
+
+当你运行 `bee rs` 时，`bee.json` 中的 `scripts` 配置会按照以下方式生效：
+
+1. 启动应用时：
+* `before_start` 中配置的命令会在应用启动之前执行。
+* 一旦命令执行完成，Beego 应用会启动。
+
+2. 代码变动并重载应用时：
+* 每当 `bee rs` 检测到文件变动并自动重载应用时，`after_reload` 中配置的命令会被执行。
+* 这意味着在每次应用重启时，你都可以看到自定义的输出或运行额外的任务。
+
+=== server 命令
+
+在端口上通过 HTTP 提供静态内容。
+
+[source, bash]
+----
+$ bee help server
+USAGE
+  bee server [port]
+
+OPTIONS
+  -a
+      Listen address
+
+  -f
+      Static files fold
+
+  -p
+      Listen port
+
+DESCRIPTION
+  The command 'server' creates a Beego API application.
+----
+
+`bee server` 命令是 Beego 框架中的一个开发命令，用于启动 Beego 应用的 Web 服务器。它是 Beego 应用程序的一部分，允许开发者在本地启动服务器并运行应用程序。这个命令通常用于开发阶段，以便快速查看应用的效果和调试。
+
+==== 示例用法
+
+假设你要运行一个 `bee server` 来提供静态文件服务，可以使用以下命令：
+
+[source, bash]
+----
+bee server -a 0.0.0.0 -p 8081 -f ./static
+----
+
+这个命令会在 `0.0.0.0:8081` 启动一个服务器，并提供 `./static` 目录中的静态文件。
+
+=== run 命令
+
+`bee run` 是 Beego 框架中的一个命令，用于运行 Beego 应用程序。在开发过程中，`bee run` 可以用来启动一个开发服务器，自动加载应用程序代码并进行热重载。这个命令是 Beego 项目开发中非常常用的命令之一，能够帮助开发者快速启动应用程序进行调试和测试。
+
+[source, bash]
+----
+$ bee help run
+USAGE
+  bee run [appname] [watchall] [-main=*.go] [-downdoc=true]  [-gendoc=true] [-vendor=true] [-e=folderToExclude] [-ex=extraPackageToWatch] [-tags=goBuildTags] [-runmode=BEEGO_RUNMODE]
+
+OPTIONS
+  -downdoc
+      Enable auto-download of the swagger file if it does not exist.
+
+  -e=[]
+      List of paths to exclude.
+
+  -ex=[]
+      List of extra package to watch.
+
+  -gendoc
+      Enable auto-generate the docs.
+
+  -ldflags
+      Set the build ldflags. See: https://golang.org/pkg/go/build/
+
+  -main=[]
+      Specify main go files.
+
+  -runargs
+      Extra args to run application
+
+  -runmode
+      Set the Beego run mode.("prod/dev")
+
+  -tags
+      Set the build tags. See: https://golang.org/pkg/go/build/
+
+  -vendor=false
+      Enable watch vendor folder.
+
+DESCRIPTION
+  Run command will supervise the filesystem of the application for any changes, and recompile/restart it.
+----
+
+[WARNING]
+====
+浏览器端自动重载代码在生成代码的时候注入。
+====
+
+==== 热重载原理
+
+Beego 使用了文件系统监视（File Watcher）来检测文件的变动。当项目文件发生变化时，Beego 会重新加载这些变动，并根据需要重新编译代码或重启服务。
+
+* Beego 使用了 Go 的 `net/http` 包和其他工具来启动 HTTP 服务器。
+* 通过文件系统监听库（如 `fsnotify`），`bee run` 能够实时监控文件的更改。
+* 一旦文件发生变化，`bee run` 会触发热重载，更新服务的内容并重新启动。
+
+=== pro 命令
+
+Beego 框架中的一个命令 `pro` 的实现，属于 beegopro 模块，它提供了一些功能来生成源代码和配置。`bee pro` 命令允许用户通过 Beego 框架创建 SQL 迁移、配置文件、模块等内容。具体来说，`bee pro` 是 Beego 提供的一个源码生成器，支持一些常用操作，如生成数据库迁移、配置文件等。
+
+[source, bash]
+----
+$ bee help pro
+USAGE
+  bee pro [command]
+
+OPTIONS
+  -sql
+      sql file path
+
+  -sqlmode
+      sql mode
+
+  -sqlpath
+      sql mode path
+
+  -url
+      git remote path
+
+DESCRIPTION
+----
+
+==== 子命令
+
+* gen：生成代码或项目结构。
+* toml：初始化 TOML 配置文件。
+* config：生成配置文件。
+* migration：生成数据库迁移脚本。
+
+==== 命令行参数
+
+通过命令行参数来指定一些选项，参数包括：
+
+* `-sql`：指定 SQL 文件的路径。
+* `-sqlmode`：指定 SQL 模式。
+* `-sqlpath`：指定 SQL 模式的路径。
+* `-url`：指定 Git 远程路径。
+
+=== api 命令
+
+`bee api` 是 Beego 框架中的一个命令，用于快速创建一个 Beego API 项目。通过 `bee api` 命令，你可以快速初始化一个 RESTful 风格的 API 项目，省去手动配置和构建项目结构的麻烦。
+
+[source, bash]
+----
+$ bee help api
+USAGE
+  bee api [appname]
+
+OPTIONS
+  -beego
+      set beego version,only take effect by go mod
+
+  -conn
+      Connection string used by the driver to connect to a database instance.
+
+  -driver
+      Database driver. Either mysql, postgres or sqlite.
+
+  -gopath
+      Support go path,default false
+
+  -tables
+      List of table names separated by a comma.
+
+DESCRIPTION
+  The command 'api' creates a Beego API application.
+  now default support generate a go modules project.
+
+  Example:
+      $ bee api [appname] [-tables=""] [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"]  [-gopath=false] [-beego=v1.12.3]
+
+  If 'conn' argument is empty, the command will generate an example API application. Otherwise the command
+  will connect to your database and generate models based on the existing tables.
+
+  The command 'api' creates a folder named [appname] with the following structure:
+
+            ├── main.go
+            ├── go.mod
+            ├── conf
+            │     └── app.conf
+            ├── controllers
+            │     └── object.go
+            │     └── user.go
+            ├── routers
+            │     └── router.go
+            ├── tests
+            │     └── default_test.go
+            └── models
+                  └── object.go
+                  └── user.go
+
+----
+
+==== 命令行用法
+
+[source, bash]
+----
+bee api <project_name> [options]
+----
+
+* `<project_name>`: 指定你要创建的 API 项目的名称。
+* `[options]`: 可选的参数和选项，用于定制生成的项目。
+
+常见的 `bee api` 命令选项包括：
+
+* `-driver`: 指定数据库驱动（如 mysql、postgres 等）。
+* `-conn`: 数据库连接字符串。
+* `-force`: 如果目录已经存在，是否强制覆盖。
+
+=== generate 命令
+
+`bee generate` 命令是 Beego 框架提供的一个工具，用于自动化生成项目中的各种代码组件。通过使用这个命令，开发者可以快速生成数据库迁移、模型、控制器、视图、路由、API 文档等内容，从而节省手动编写模板代码的时间。
+
+[source, bash]
+----
+$ bee help generate
+USAGE
+  bee generate [command]
+
+OPTIONS
+  -conn
+      Connection string used by the SQLDriver to connect to a database instance.
+
+  -ctrlDir
+      Controller directory. Bee scans this directory and its sub directory to generate routers
+
+  -ddl
+      Generate DDL Migration
+
+  -driver
+      Database SQLDriver. Either mysql, postgres or sqlite.
+
+  -fields
+      List of table Fields.
+
+  -level
+      Either 1, 2 or 3. i.e. 1=models; 2=models and controllers; 3=models, controllers and routers.
+
+  -routersFile
+      Routers file. If not found, Bee create a new one. Bee will truncates this file and output routers info into this file
+
+  -routersPkg
+      router's package. Default is routers, it means that "package routers" in the generated file
+
+  -tables
+      List of table names separated by a comma.
+
+DESCRIPTION
+  ▶ To scaffold out your entire application:
+
+     $ bee generate scaffold [scaffoldname] [-fields="title:string,body:text"] [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"]
+
+  ▶ To generate a Model based on fields:
+
+     $ bee generate model [modelname] [-fields="name:type"]
+
+  ▶ To generate a controller:
+
+     $ bee generate controller [controllerfile]
+
+  ▶ To generate a CRUD view:
+
+     $ bee generate view [viewpath]
+
+  ▶ To generate a migration file for making database schema updates:
+
+     $ bee generate migration [migrationfile] [-fields="name:type"]
+
+  ▶ To generate swagger doc file:
+
+     $ bee generate docs
+
+    ▶ To generate swagger doc file:
+
+     $ bee generate routers [-ctrlDir=/path/to/controller/directory] [-routersFile=/path/to/routers/file.go] [-routersPkg=myPackage]
+
+  ▶ To generate a test case:
+
+     $ bee generate test [routerfile]
+
+  ▶ To generate appcode based on an existing database:
+
+     $ bee generate appcode [-tables=""] [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-level=3]
+----
+
+==== 支持的子命令
+
+`bee generate` 提供了多种子命令，每个子命令都有不同的功能。下面是常见的子命令及其说明：
+
+1. scaffold
++
+--
+用于生成一个完整的数据库表的 CRUD（增、删、改、查）操作代码，包括模型、控制器、视图和数据库迁移文件。
+
+[source, bash]
+----
+bee generate scaffold [scaffoldname] [-fields="title:string,body:text"] [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"]
+----
+
+* `scaffoldname`: 生成的 scaffold 名称，通常对应数据库表的名称。
+* `-fields`: 指定数据库表字段及类型，格式为 `字段名:字段类型`，多个字段用逗号分隔。
+* `-driver`: 指定数据库驱动（如 `mysql`, `postgres` 等）。
+* `-conn`: 数据库连接字符串。
+--
+
+2. model
++
+--
+用于生成一个新的模型代码文件。
+
+[source, bash]
+----
+bee generate model [modelname] [-fields="name:type"]
+----
+
+* `modelname`: 模型名称。
+* `-fields`: 模型的字段及类型。
+--
+
+3. controller
++
+--
+用于生成控制器文件。
+
+[source, bash]
+----
+bee generate controller [controllerfile]
+----
+
+* `controllerfile`: 要生成的控制器文件名。
+--
+
+4. view
++
+--
+用于生成一个视图文件。
+
+[source, bash]
+----
+bee generate view [viewpath]
+----
+
+* `viewpath`: 生成的视图文件路径。
+--
+
+5. migration
++
+--
+用于生成数据库迁移文件。
+
+[source, bash]
+----
+bee generate migration [migrationfile] [-fields="name:type"]
+----
+
+* `migrationfile`: 迁移文件名。
+* `-fields`: 表字段及类型，用于生成迁移文件的 SQL 语句。
+--
+
+6. docs
++
+--
+用于生成 Swagger API 文档。
+
+[source, bash]
+----
+bee generate docs
+----
+
+此命令会扫描你的控制器并生成 Swagger 文档，便于 API 文档的自动化管理。
+--
+
+7. routers
++
+--
+用于生成路由文件。
+
+[source, bash]
+----
+bee generate routers [-ctrlDir=/path/to/controller/directory] [-routersFile=/path/to/routers/file.go] [-routersPkg=myPackage]
+----
+
+* `-ctrlDir`: 控制器所在目录，Bee 会扫描该目录及其子目录来生成路由。
+* `-routersFile`: 路由文件的路径，若文件不存在，则会创建一个新的。
+* `-routersPkg`: 路由文件的包名，默认为 `routers`。
+--
+
+8. test
++
+--
+用于生成测试用例。
+
+[source, bash]
+----
+bee generate test [routerfile]
+----
+
+* `routerfile`: 路由文件，用于生成与路由相关的测试代码。
+--
+
+9. appcode
++
+--
+用于根据现有数据库生成应用代码，包括模型、控制器和路由。
+
+[source, bash]
+----
+bee generate appcode [-tables=""] [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-level=3]
+----
+
+* `-tables`: 需要生成代码的表名列表。
+* `-driver`: 数据库驱动。
+* `-conn`: 数据库连接字符串。
+* `-level`: 生成的代码层级（1：仅生成模型，2：生成模型和控制器，3：生成模型、控制器和路由）。
+--
+
+=== hprose 命令
+
+基于 Hprose 和 Beego 框架创建一个 RPC 应用。使用 Hprose 和 Beego 框架来构建一个远程过程调用（RPC）应用程序。
+
+该命令简化了 Beego + Hprose 框架的 RPC 应用的创建过程，自动化生成必要的文件和配置，包括模型和数据库连接。如果没有提供数据库连接，它会生成一个示例应用。命令支持 Go 模块和 GOPATH 环境，可以根据现有的数据库表生成应用代码，或创建一个空的应用框架。
+
+[source, bash]
+----
+$ bee help hprose
+USAGE
+  bee hprose [appname]
+
+OPTIONS
+  -beego
+      set beego version,only take effect by go mod
+
+  -conn
+      Connection string used by the driver to connect to a database instance.
+
+  -driver
+      Database driver. Either mysql, postgres or sqlite.
+
+  -gopath
+      Support go path,default false
+
+  -tables
+      List of table names separated by a comma.
+
+DESCRIPTION
+  The command 'hprose' creates an RPC application based on both Beego and Hprose (http://hprose.com/).
+
+  To scaffold out your application, use:
+
+      $ bee hprose [appname] [-tables=""] [-driver=mysql] [-conn="root:@tcp(127.0.0.1:3306)/test"] [-gopath=false] [-beego=v1.12.3]
+
+  If 'conn' is empty, the command will generate a sample application. Otherwise the command
+  will connect to your database and generate models based on the existing tables.
+
+  The command 'hprose' creates a folder named [appname] with the following structure:
+
+            ├── main.go
+            ├── go.mod
+            ├── conf
+            │     └── app.conf
+            └── models
+                  └── object.go
+                  └── user.go
+
+----
+
+命令参数和标志：
+
+* `-tables`：用于指定数据库表的名称列表，用逗号分隔。
+* `-driver`：数据库驱动类型（如 `mysql`、`postgres` 或 `sqlite`）。
+* `-conn`：用于连接数据库的连接字符串。
+* `-gopath`：指定是否支持 `GOPATH`（默认为 `false`）。
+* `-beego`：指定 Beego 版本，用于生成项目时的 Go 模块管理。
+
+==== 使用示例
+
+创建一个 Hprose RPC 应用：
+
+[source, bash]
+----
+bee hprose myapp -driver=mysql -conn="root:@tcp(127.0.0.1:3306)/test"
+----
+
+这条命令会创建一个名为 `myapp` 的 RPC 应用，并根据提供的数据库连接字符串生成模型。
+
+=== dlv 命令
+
+使用 Delve 启动一个调试会话。它通过 Delve 调试器启动一个 Go 应用的调试会话，支持自动重新构建和热重载，常用于开发过程中调试 Go 应用。
+
+[source, bash]
+----
+$ bee help dlv
+USAGE
+  bee dlv [-package=""] [-port=8181] [-verbose=false]
+
+OPTIONS
+  -package
+      The package to debug (Must have a main package)
+
+  -port=8181
+      Port to listen to for clients
+
+  -verbose=false
+      Enable verbose mode
+
+DESCRIPTION
+  dlv command start a debugging session using debugging tool Delve.
+
+  To debug your application using Delve, use: $ bee dlv
+
+  For more information on Delve: https://github.com/go-delve/delve
+----
+
+`bee dlv` 是 Beego 框架中的一个命令，用于与 Delve 调试工具集成，方便开发者在调试过程中使用 Delve 进行 Go 程序的调试。Delve 是 Go 语言的调试器，它提供了强大的调试功能，允许开发者在开发过程中进行单步调试、变量查看、调用栈跟踪等操作，帮助定位和解决程序中的问题。
+
+==== 命令行参数
+
+* `package`：要调试的 Go 包（必须包含 `main` 包）。
+* `verbose`：启用详细模式，在调试过程中提供更多信息。
+* `port`：调试器监听的端口，默认为 8181。
+
+==== 使用示例
+
+* 启动调试会话
++
+--
+[source, bash]
+----
+bee dlv -package="your-package" -port=8181 -verbose=true
+----
+
+这条命令会启动调试器，连接到指定的包，并在端口 8181 上监听客户端请求。
+--
+
+* 自动构建和热重载： 该命令会监视当前工作目录下的 Go 文件，一旦文件发生变化（如编辑和保存），就会自动重新构建，并通知调试器重新加载。
+
+== bee 工具配置文件
+
+您可能已经注意到，在 `bee` 工具的源码目录下有一个 `bee.json` 文件，这个文件是针对 `bee` 工具的一些行为进行配置。该功能还未完全开发完成，不过其中的一些选项已经可以使用：
+
+* `"version": 0`：配置文件版本，用于对比是否发生不兼容的配置格式版本。
+* `"go_install": false`：如果您的包均使用完整的导入路径（例如：github.com/user/repo/subpkg）,则可以启用该选项来进行 go install 操作，加快构建操作。
+* `"watch_ext": []`：用于监控其它类型的文件（默认只监控后缀为 .go 的文件）。
+* `+"dir_structure":{}+`：如果您的目录名与默认的 MVC 架构的不同，则可以使用该选项进行修改。
+* `"cmd_args": []`：如果您需要在每次启动时加入启动参数，则可以使用该选项。
+* `"envs": []`：如果您需要在每次启动时设置临时环境变量参数，则可以使用该选项。

@@ -14,4 +14,5 @@
 
 package utils
 
+// 当前应用版本
 const BEEGO_VERSION = "v2.1.0"

@@ -15,6 +15,7 @@ var (
 	swaggerlink    = "https://codeload.github.com/beego/swagger/zip/refs/tags/v" + swaggerVersion
 )
 
+// 从指定的请求路径下载文件
 func downloadFromURL(url, fileName string) {
 	var down bool
 	if fd, err := os.Stat(fileName); err != nil && os.IsNotExist(err) {
@@ -50,6 +51,7 @@ func downloadFromURL(url, fileName string) {
 	}
 }
 
+// 解压并删除压缩文件
 func unzipAndDelete(src string) error {
 	beeLogger.Log.Infof("Unzipping '%s'...", src)
 	r, err := zip.OpenReader(src)

@@ -19,6 +19,8 @@ import (
 	"io"
 )
 
+// 代码是一个实现了终端颜色输出的 Go 包 colors，主要功能是为终端中的文本添加颜色和加粗效果
+
 type outputMode int
 
 // DiscardNonColorEscSeq supports the divided color escape sequence.
@@ -27,9 +29,9 @@ type outputMode int
 // escape sequences such as ncurses. However, it does not support the divided
 // color escape sequence.
 const (
-	_ outputMode = iota
-	DiscardNonColorEscSeq
-	OutputNonColorEscSeq
+	_                     outputMode = iota
+	DiscardNonColorEscSeq            // 仅输出颜色转义序列，忽略非颜色的转义序列
+	OutputNonColorEscSeq             // 输出所有转义序列，包括颜色和非颜色的（如 ncurses 库需要的转义序列）
 )
 
 // NewColorWriter creates and initializes a new ansiColorWriter
@@ -37,6 +39,7 @@ const (
 // In the console of Windows, which change the foreground and background
 // colors of the text by the escape sequence.
 // In the console of other systems, which writes to w all text.
+// 创建了一个 ansiColorWriter 对象，并将默认的输出模式设置为 DiscardNonColorEscSeq。该模式会忽略非颜色的转义序列，只处理颜色的转义序列
 func NewColorWriter(w io.Writer) io.Writer {
 	return NewModeColorWriter(w, DiscardNonColorEscSeq)
 }
@@ -44,7 +47,9 @@ func NewColorWriter(w io.Writer) io.Writer {
 // NewModeColorWriter create and initializes a new ansiColorWriter
 // by specifying the outputMode.
 func NewModeColorWriter(w io.Writer, mode outputMode) io.Writer {
+	// 首先检查传入的 w 是否已经是一个 *colorWriter 类型。如果是，就直接返回原对象
 	if _, ok := w.(*colorWriter); !ok {
+		// 如果 w 不是 *colorWriter 类型，则创建一个新的 colorWriter 并返回。colorWriter 将包含传入的 w 和指定的 mode
 		return &colorWriter{
 			w:    w,
 			mode: mode,
@@ -52,6 +57,8 @@ func NewModeColorWriter(w io.Writer, mode outputMode) io.Writer {
 	}
 	return w
 }
+
+// 颜色和加粗功能
 
 func Bold(message string) string {
 	return fmt.Sprintf("\x1b[1m%s\x1b[0m", message)

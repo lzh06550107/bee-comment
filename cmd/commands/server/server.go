@@ -51,23 +51,26 @@ func init() {
 }
 
 func createAPI(cmd *commands.Command, args []string) int {
+	// 首先检查 args 中是否包含参数，如果有，则使用 cmd.Flag.Parse 来解析命令行参数并将其传递给相应的标志（例如，-a、-p 和 -f）
 	if len(args) > 0 {
 		err := cmd.Flag.Parse(args[1:])
 		if err != nil {
 			beeLogger.Log.Error(err.Error())
 		}
 	}
-	if a == "" {
+	// 设置默认值
+	if a == "" { // 如果 a（监听地址）为空，则默认为 127.0.0.1
 		a = "127.0.0.1"
 	}
-	if p == "" {
+	if p == "" { // 如果 p（监听端口）为空，则默认为 8080
 		p = "8080"
 	}
-	if f == "" {
+	if f == "" { // 如果 f（静态文件目录）为空，则使用当前工作目录作为静态文件目录
 		cwd, _ := os.Getwd()
 		f = utils.DocValue(cwd)
 	}
 	beeLogger.Log.Infof("Start server on http://%s:%s, static file %s", a, p, f)
+	// 创建一个文件服务器，它会从指定目录 f 提供文件
 	err := http.ListenAndServe(string(a)+":"+string(p), http.FileServer(http.Dir(f)))
 	if err != nil {
 		beeLogger.Log.Error(err.Error())

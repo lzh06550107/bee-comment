@@ -83,10 +83,12 @@ var ErrorTemplate = `bee: %s.
 Use {{"bee help" | bold}} for more information.
 `
 
+// 根命令使用说明
 func Usage() {
 	utils.Tmpl(usageTemplate, commands.AvailableCommands)
 }
 
+// 子命令使用帮助
 func Help(args []string) {
 	if len(args) == 0 {
 		Usage()

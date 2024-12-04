@@ -166,12 +166,15 @@ func SearchGOPATHs(app string) (bool, string, string) {
 // confirmations. If the input is not recognized, it will ask again. The function does not return
 // until it gets a valid response from the user. Typically, you should use fmt to print out a question
 // before calling askForConfirmation. E.g. fmt.Println("WARNING: Are you sure? (yes/no)")
+// 这段代码实现了一个简单的用户输入确认功能，要求用户输入“yes”或“no”来做出确认。
+// 它通过 fmt.Scanln 从标准输入中读取用户的输入，然后根据输入的内容判断是否继续执行或终止
 func AskForConfirmation() bool {
 	var response string
-	_, err := fmt.Scanln(&response)
+	_, err := fmt.Scanln(&response) // 读取用户输入
 	if err != nil {
 		beeLogger.Log.Fatalf("%s", err)
 	}
+	// 定义有效的响应列表
 	okayResponses := []string{"y", "Y", "yes", "Yes", "YES"}
 	nokayResponses := []string{"n", "N", "no", "No", "NO"}
 	if containsString(okayResponses, response) {
@@ -179,6 +182,7 @@ func AskForConfirmation() bool {
 	} else if containsString(nokayResponses, response) {
 		return false
 	} else {
+		// 如果输入不在有效响应列表中，提示用户重新输入，然后递归调用 AskForConfirmation 直到获得有效响应
 		fmt.Println("Please type yes or no and then press enter:")
 		return AskForConfirmation()
 	}
@@ -317,13 +321,18 @@ func EndLine() string {
 	return "\n"
 }
 
+/*
+* 用于渲染模板并输出结果。它使用了 Go 标准库中的 text/template 包以及一个名为 BeeFuncMap 的函数来提供模板功能
+ */
 func Tmpl(text string, data interface{}) {
-	output := colors.NewColorWriter(os.Stderr)
+	output := colors.NewColorWriter(os.Stderr) // 支持带颜色的输出
 
+	// template.New("Usage"): 创建一个新的模板，名称为 "Usage"
+	// 使用 BeeFuncMap 函数提供自定义的模板函数映射（BeeFuncMap 可能是一个用来扩展模板功能的函数，提供额外的模板功能，如格式化、日期、条件判断等）
 	t := template.New("Usage").Funcs(BeeFuncMap())
-	template.Must(t.Parse(text))
+	template.Must(t.Parse(text)) // 解析传入的模板文本 text
 
-	err := t.Execute(output, data)
+	err := t.Execute(output, data) // 执行模板渲染
 	if err != nil {
 		beeLogger.Log.Error(err.Error())
 	}
@@ -380,7 +389,7 @@ func GoCommand(command string, args ...string) error {
 
 // SplitQuotedFields is like strings.Fields but ignores spaces
 // inside areas surrounded by single quotes.
-// To specify a single quote use backslash to escape it: '\''
+// To specify a single quote use backslash to escape it: '\”
 func SplitQuotedFields(in string) []string {
 	type stateEnum int
 	const (
@@ -483,13 +492,20 @@ func IsGOMODULE() bool {
 	return false
 }
 
+/*
+* 检查当前 Beego 工具是否需要更新
+ */
 func NoticeUpdateBee() {
+	// 1. 检查 Go 环境
+	// 通过执行 go version 命令检查当前的 Go 环境是否可用。如果 cmd.Process 为 nil 或 PID 小于等于 0，表示没有正确配置 Go 环境
 	cmd := exec.Command("go", "version")
 	cmd.Output()
 	if cmd.Process == nil || cmd.Process.Pid <= 0 {
 		beeLogger.Log.Warn("There is no go environment")
 		return
 	}
+	// 2. 检查 Beego 目录是否存在
+	// 获取 Beego 目录 beeHome（system.BeegoHome）并检查该目录是否存在。如果不存在，则创建该目录
 	beeHome := system.BeegoHome
 	if !IsExist(beeHome) {
 		if err := os.MkdirAll(beeHome, 0755); err != nil {
@@ -497,6 +513,8 @@ func NoticeUpdateBee() {
 			return
 		}
 	}
+	// 3. 读取 .noticeUpdateBee 文件
+	// 检查文件 /.noticeUpdateBee 是否存在。若不存在，则创建此文件
 	fp := beeHome + "/.noticeUpdateBee"
 	timeNow := time.Now().Unix()
 	var timeOld int64
@@ -508,6 +526,9 @@ func NoticeUpdateBee() {
 		}
 		defer f.Close()
 	}
+
+	// 4. 检查文件的内容并判断是否已超过24小时
+	// 如果文件存在，读取文件内容并解析为时间戳（timeOld）。如果当前时间与文件中记录的时间差小于 24 小时，则返回，不进行更新检查
 	oldContent, err := ioutil.ReadFile(fp)
 	if err != nil {
 		beeLogger.Log.Warnf("Read noticeUpdateBee file err: %s", err)
@@ -517,6 +538,9 @@ func NoticeUpdateBee() {
 	if timeNow-timeOld < 24*60*60 {
 		return
 	}
+
+	// 5. 更新 .noticeUpdateBee 文件
+	// 如果超过24小时，更新 .noticeUpdateBee 文件的内容为当前时间戳，表示已经进行了更新检查
 	w, err := os.OpenFile(fp, os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		beeLogger.Log.Warnf("Open noticeUpdateBee file err: %s", err)
@@ -528,6 +552,9 @@ func NoticeUpdateBee() {
 		beeLogger.Log.Warnf("Update noticeUpdateBee file err: %s", err)
 		return
 	}
+
+	// 6. 检查 Beego 的最新版本
+	// 获取 Beego 的最新版本信息（通过 BeeLastVersion()）。如果获取到的新版本与当前版本不一致，输出提示更新信息，告诉用户运行 bee update 来更新 Beego
 	beeLogger.Log.Info("Getting bee latest version...")
 	versionLast := BeeLastVersion()
 	versionNow := config.Version
@@ -542,6 +569,9 @@ func NoticeUpdateBee() {
 	beeLogger.Log.Info("Your bee are up to date")
 }
 
+/*
+* 用于获取 Beego 最新版本的函数 BeeLastVersion。该函数通过 GitHub API 获取 Beego 仓库的标签（tags），并从中提取出版本号
+ */
 func BeeLastVersion() (version string) {
 	var url = "https://api.github.com/repos/beego/bee/tags"
 	resp, err := http.Get(url)
@@ -549,9 +579,9 @@ func BeeLastVersion() (version string) {
 		beeLogger.Log.Warnf("Get bee tags from github error: %s", err)
 		return
 	}
-	defer resp.Body.Close()
-	bodyContent, _ := ioutil.ReadAll(resp.Body)
-	var tags []tagName
+	defer resp.Body.Close()                     // 确保在函数结束时关闭 HTTP 响应体，避免资源泄漏
+	bodyContent, _ := ioutil.ReadAll(resp.Body) // 读取响应体内容
+	var tags []tagName                          // tagName 是预定义的结构体类型，用于表示标签的数据结构
 	if err = json.Unmarshal(bodyContent, &tags); err != nil {
 		beeLogger.Log.Warnf("Unmarshal tags body error: %s", err)
 		return
@@ -604,7 +634,7 @@ func BeeReleasesInfo() (repos []Releases) {
 	return
 }
 
-//TODO merge UpdateLastPublishedTime and NoticeUpdateBee
+// TODO merge UpdateLastPublishedTime and NoticeUpdateBee
 func UpdateLastPublishedTime() {
 	info := BeeReleasesInfo()
 	if len(info) == 0 {

@@ -258,7 +258,9 @@ var reloadJsClient = `function b(a){var c=new WebSocket(a);c.onclose=function(){
 `
 
 func init() {
+	// 用来指定是否支持 Go 传统的 GOPATH 工作空间（默认为 false）。如果为 true，则会在传统的 GOPATH 模式下创建 Beego 项目
 	CmdNew.Flag.Var(&gopath, "gopath", "Support go path,default false")
+	// beegoVersion: 用来指定 Beego 的版本，仅在使用 Go Modules 时生效
 	CmdNew.Flag.Var(&beegoVersion, "beego", "set beego version,only take effect by go mod")
 	commands.AvailableCommands = append(commands.AvailableCommands, CmdNew)
 }
@@ -278,14 +280,14 @@ func CreateApp(cmd *commands.Command, args []string) int {
 	var appPath string
 	var packPath string
 	var err error
-	if gopath == `true` {
+	if gopath == `true` { // 如果 gopath 为 true，表示创建一个支持 GOPATH 的项目
 		beeLogger.Log.Info("Generate new project support GOPATH")
 		version.ShowShortVersionBanner()
 		appPath, packPath, err = utils.CheckEnv(args[0])
 		if err != nil {
 			beeLogger.Log.Fatalf("%s", err)
 		}
-	} else {
+	} else { // 如果 gopath 为 false，则使用 Go Modules 创建项目
 		beeLogger.Log.Info("Generate new project support go modules.")
 		appPath = path.Join(utils.GetBeeWorkPath(), args[0])
 		packPath = args[0]
@@ -294,6 +296,7 @@ func CreateApp(cmd *commands.Command, args []string) int {
 		}
 	}
 
+	// 检查是否已存在同名应用 如果目标路径已经存在相同名称的应用，提示用户是否覆盖现有文件
 	if utils.IsExist(appPath) {
 		beeLogger.Log.Errorf(colors.Bold("Application '%s' already exists"), appPath)
 		beeLogger.Log.Warn(colors.Bold("Do you want to overwrite it? [Yes|No] "))
@@ -309,6 +312,7 @@ func CreateApp(cmd *commands.Command, args []string) int {
 		packPath = path.Base(appPath)
 	}
 
+	// 创建 Beego 项目所需的基本目录和文件
 	os.MkdirAll(appPath, 0755)
 	if gopath != `true` {
 		fmt.Fprintf(output, "\t%s%screate%s\t %s%s\n", "\x1b[32m", "\x1b[1m", "\x1b[21m", path.Join(appPath, "go.mod"), "\x1b[0m")

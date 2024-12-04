@@ -4,7 +4,7 @@
 // not use this file except in compliance with the License. You may obtain
 // a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -29,6 +29,7 @@ import (
 
 var errInvalidLogLevel = errors.New("logger: invalid log level")
 
+// 该日志库定义了多个日志级别常量，用来标记日志消息的严重性
 const (
 	levelDebug = iota
 	levelError
@@ -50,18 +51,20 @@ var debugMode = os.Getenv("DEBUG_ENABLED") == "1"
 var logLevel = levelInfo
 
 // BeeLogger logs logging records to the specified io.Writer
+// 该结构体包含了日志记录的核心方法，比如设置输出、日志格式化等
 type BeeLogger struct {
-	mu     sync.Mutex
-	output io.Writer
+	mu     sync.Mutex // 互斥锁，确保日志记录是线程安全的
+	output io.Writer  // 日志输出目标，可以是 os.Stdout、os.Stderr 或其他 io.Writer
 }
 
 // LogRecord represents a log record and contains the timestamp when the record
 // was created, an increasing id, level and the actual formatted log line.
+// LogRecord 用于存储单个日志记录的内容
 type LogRecord struct {
-	ID       string
-	Level    string
-	Message  string
-	Filename string
+	ID       string // 日志记录的唯一 ID
+	Level    string // 日志级别（例如：DEBUG, INFO, ERROR）
+	Message  string // 日志消息内容
+	Filename string // 对于调试日志，它还会记录文件名和行号
 	LineNo   int
 }
 
@@ -75,9 +78,11 @@ var (
 // GetBeeLogger initializes the logger instance with a NewColorWriter output
 // and returns a singleton
 func GetBeeLogger(w io.Writer) *BeeLogger {
+	// once.Do 确保了 BeeLogger 实例的线程安全初始化
 	once.Do(func() {
 		var (
-			err             error
+			err error
+			// 初始化日志模板
 			simpleLogFormat = `{{Now "2006/01/02 15:04:05"}} {{.Level}} ▶ {{.ID}} {{.Message}}{{EndLine}}`
 			debugLogFormat  = `{{Now "2006/01/02 15:04:05"}} {{.Level}} ▶ {{.ID}} {{.Filename}}:{{.LineNo}} {{.Message}}{{EndLine}}`
 		)
@@ -87,15 +92,18 @@ func GetBeeLogger(w io.Writer) *BeeLogger {
 			"Now":     Now,
 			"EndLine": EndLine,
 		}
+		// 普通日志格式
 		logRecordTemplate, err = template.New("simpleLogFormat").Funcs(funcs).Parse(simpleLogFormat)
 		if err != nil {
 			panic(err)
 		}
+		// 调试日志格式，包含文件名和行号
 		debugLogRecordTemplate, err = template.New("debugLogFormat").Funcs(funcs).Parse(debugLogFormat)
 		if err != nil {
 			panic(err)
 		}
 
+		// 解析错误处理等
 		instance = &BeeLogger{output: colors.NewColorWriter(w)}
 	})
 	return instance
@@ -141,6 +149,7 @@ func (l *BeeLogger) getLevelTag(level int) string {
 	}
 }
 
+// 根据不同的日志级别，日志标签（例如 INFO，ERROR）会被格式化成不同的颜色
 func (l *BeeLogger) getColorLevel(level int) string {
 	switch level {
 	case levelCritical:
@@ -166,15 +175,17 @@ func (l *BeeLogger) getColorLevel(level int) string {
 
 // mustLog logs the message according to the specified level and arguments.
 // It panics in case of an error.
+// 这个方法用于根据日志级别格式化并输出日志。它首先检查当前日志级别是否允许输出，如果允许，就创建日志记录并通过模板进行格式化后输出
 func (l *BeeLogger) mustLog(level int, message string, args ...interface{}) {
 	if level > logLevel {
 		return
 	}
-	// Acquire the lock
+	// Acquire the lock 线程锁定，确保安全写入
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	// Create the logging record and pass into the output
+	// 这里使用了 atomic.AddUint64 来生成唯一的日志 ID，确保每条日志都有一个递增的 ID
 	record := LogRecord{
 		ID:      fmt.Sprintf("%04d", atomic.AddUint64(&sequenceNo, 1)),
 		Level:   l.getColorLevel(level),
@@ -189,6 +200,7 @@ func (l *BeeLogger) mustLog(level int, message string, args ...interface{}) {
 
 // mustLogDebug logs a debug message only if debug mode
 // is enabled. i.e. DEBUG_ENABLED="1"
+// 这个方法用于输出调试日志，只有在 DEBUG_ENABLED="1" 环境变量开启时才会生效。它将日志输出到 os.Stderr
 func (l *BeeLogger) mustLogDebug(message string, file string, line int, args ...interface{}) {
 	if !debugMode {
 		return

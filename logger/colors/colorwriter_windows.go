@@ -12,6 +12,7 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
+//go:build windows
 // +build windows
 
 package colors
@@ -23,6 +24,10 @@ import (
 	"syscall"
 	"unsafe"
 )
+
+// 这段代码是实现 Windows 环境下带有 ANSI 转义序列（即文本格式控制，如颜色和样式）的输出功能。
+// 具体地，它处理了如何在 Windows 控制台中解析和应用 ANSI 转义序列，包括颜色和文本样式（如加粗、下划线等）。
+// 代码通过与 Windows API（如 SetConsoleTextAttribute 和 GetConsoleScreenBufferInfo）的交互来设置控制台文本属性
 
 type csiState int
 

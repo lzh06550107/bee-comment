@@ -4,7 +4,7 @@
 // not use this file except in compliance with the License. You may obtain
 // a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -142,20 +142,25 @@ const (
 	pingPeriod = (pongWait * 9) / 10 // Send pings to peer with this period. Must be less than pongWait.
 )
 
+// 用于启动一个 WebSocket 服务器，用来处理文件的实时重新加载
 func startReloadServer() {
+	// wsBroker 是一个结构体，用来管理 WebSocket 客户端的连接以及广播消息
 	broker = &wsBroker{
-		broadcast:  make(chan []byte),
-		register:   make(chan *wsClient),
-		unregister: make(chan *wsClient),
-		clients:    make(map[*wsClient]bool),
+		broadcast:  make(chan []byte),        // 用于向所有连接的客户端发送数据
+		register:   make(chan *wsClient),     // 用于注册新的客户端连接
+		unregister: make(chan *wsClient),     // 用于注销客户端连接
+		clients:    make(map[*wsClient]bool), // 存储所有活跃的 WebSocket 客户端
 	}
 
+	// run 方法应该是 wsBroker 结构体的一个方法，用来处理客户端的注册、注销和消息广播等逻辑
 	go broker.run()
+	// 使用 http.HandleFunc 设置 /reload 路径的 HTTP 请求处理函数
 	http.HandleFunc("/reload", func(w http.ResponseWriter, r *http.Request) {
+		// 将 WebSocket 请求处理逻辑封装起来，通常会进行 WebSocket 握手，建立 WebSocket 连接，并将连接信息传递给 broker
 		handleWsRequest(broker, w, r)
 	})
 
-	go startServer()
+	go startServer() // 启动 HTTP 服务器
 	beeLogger.Log.Infof("Reload server listening at %s", reloadAddress)
 }
 
@@ -173,20 +178,26 @@ func sendReload(payload string) {
 }
 
 // handleWsRequest handles websocket requests from the peer.
+// 它用于处理来自客户端的 WebSocket 请求，升级 HTTP 连接为 WebSocket 连接，并启动相应的读取和写入处理
 func handleWsRequest(broker *wsBroker, w http.ResponseWriter, r *http.Request) {
+	// 升级 HTTP 请求为 WebSocket 请求
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		beeLogger.Log.Errorf("error while upgrading server connection: %v", err)
 		return
 	}
 
+	// 创建一个新的 wsClient 实例，表示一个 WebSocket 客户端
 	client := &wsClient{
-		broker: broker,
-		conn:   conn,
-		send:   make(chan []byte, 256),
+		broker: broker,                 // 客户端所在的 wsBroker，用于管理客户端和消息的广播
+		conn:   conn,                   // WebSocket 连接，通过 conn 客户端与服务器进行通信
+		send:   make(chan []byte, 256), // 一个缓冲通道，用于发送数据到客户端
 	}
+	// 将 client 注册到 broker 中，发送到 broker.register 通道
 	client.broker.register <- client
 
+	// 启动一个 goroutine 来处理客户端的消息发送。这通常意味着 writePump 方法会负责持续监听 send 通道，并将数据发送到客户端
 	go client.writePump()
+	// 执行 readPump 方法，通常用于读取客户端发送的数据并进行相应的处理。这个方法是阻塞的，直到 WebSocket 连接关闭
 	client.readPump()
 }

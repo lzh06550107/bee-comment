@@ -10,12 +10,13 @@ import (
 
 // ExecCmdDirBytes executes system command in given directory
 // and return stdout, stderr in bytes type, along with possible error.
+// 该函数用于在指定的目录中执行系统命令，并返回标准输出（stdout）和标准错误（stderr）内容，以字节数组的形式返回
 func ExecCmdDirBytes(dir, cmdName string, args ...string) ([]byte, []byte, error) {
 	bufOut := new(bytes.Buffer)
 	bufErr := new(bytes.Buffer)
 
 	cmd := exec.Command(cmdName, args...)
-	cmd.Dir = dir
+	cmd.Dir = dir // 命令执行的目录路径
 	cmd.Stdout = bufOut
 	cmd.Stderr = bufErr
 
@@ -25,12 +26,14 @@ func ExecCmdDirBytes(dir, cmdName string, args ...string) ([]byte, []byte, error
 
 // ExecCmdBytes executes system command
 // and return stdout, stderr in bytes type, along with possible error.
+// 这是 ExecCmdDirBytes 的简化版本，它在当前工作目录下执行命令，并返回标准输出和标准错误
 func ExecCmdBytes(cmdName string, args ...string) ([]byte, []byte, error) {
 	return ExecCmdDirBytes("", cmdName, args...)
 }
 
 // ExecCmdDir executes system command in given directory
 // and return stdout, stderr in string type, along with possible error.
+// 与 ExecCmdDirBytes 类似，但返回标准输出和标准错误为字符串格式
 func ExecCmdDir(dir, cmdName string, args ...string) (string, string, error) {
 	bufOut, bufErr, err := ExecCmdDirBytes(dir, cmdName, args...)
 	return string(bufOut), string(bufErr), err
@@ -38,6 +41,7 @@ func ExecCmdDir(dir, cmdName string, args ...string) (string, string, error) {
 
 // ExecCmd executes system command
 // and return stdout, stderr in string type, along with possible error.
+// 这是 ExecCmdDir 的简化版本，它在默认目录下执行命令，并返回标准输出和标准错误作为字符串
 func ExecCmd(cmdName string, args ...string) (string, string, error) {
 	return ExecCmdDir("", cmdName, args...)
 }

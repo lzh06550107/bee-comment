@@ -29,6 +29,7 @@ type RuntimeInfo struct {
 // InitBanner loads the banner and prints it to output
 // All errors are ignored, the application will not
 // print the banner in case of error.
+// 加载并打印一个横幅到指定的输出
 func InitBanner(out io.Writer, in io.Reader) {
 	if in == nil {
 		beeLogger.Log.Fatal("The input is nil")

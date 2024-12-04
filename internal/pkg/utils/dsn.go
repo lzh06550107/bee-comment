@@ -6,7 +6,9 @@ import (
 	"strings"
 )
 
-// DSN ...
+// 这段代码是一个用于解析数据源名称（DSN）的工具，它能够将 DSN 字符串解析成结构体 DSN，并且支持从 DSN 中提取出用户名、密码、网络类型、地址、数据库名称以及额外的连接参数。
+
+// DSN ... DSN 结构体用于保存 DSN 中的各个组件
 type DSN struct {
 	User   string            // Username
 	Passwd string            // Password (requires User)
@@ -16,13 +18,17 @@ type DSN struct {
 	Params map[string]string // Connection parameters
 }
 
+// 这三个错误定义用于在解析过程中返回错误
 var (
+	// 如果 URL 中的参数值没有正确转义
 	errInvalidDSNUnescaped = errors.New("invalid DSN: did you forget to escape a param value?")
-	errInvalidDSNAddr      = errors.New("invalid DSN: network address not terminated (missing closing brace)")
-	errInvalidDSNNoSlash   = errors.New("invalid DSN: missing the slash separating the database name")
+	// 如果网络地址没有正确关闭括号
+	errInvalidDSNAddr = errors.New("invalid DSN: network address not terminated (missing closing brace)")
+	// 如果 DSN 中缺少 /，即数据库名称部分前没有分隔符
+	errInvalidDSNNoSlash = errors.New("invalid DSN: missing the slash separating the database name")
 )
 
-// ParseDSN parses the DSN string to a Config
+// ParseDSN parses the DSN string to a Config，负责将 DSN 字符串解析成 DSN 结构体
 func ParseDSN(dsn string) (cfg *DSN, err error) {
 	// New config with some default values
 	cfg = new(DSN)
@@ -94,6 +100,7 @@ func ParseDSN(dsn string) (cfg *DSN, err error) {
 	return
 }
 
+// 该函数用于解析 DSN 中的查询参数部分（例如 ?param1=value1&param2=value2），并将其存储在 DSN 结构体的 Params 字段中
 func parseDSNParams(cfg *DSN, params string) (err error) {
 	for _, v := range strings.Split(params, "&") {
 		param := strings.SplitN(v, "=", 2)

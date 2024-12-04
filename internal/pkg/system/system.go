@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// Bee System Params ...
+// Bee System Params ... Bee 系统参数
 var (
 	Usr, _     = user.Current()
 	BeegoHome  = filepath.Join(Usr.HomeDir, "/.beego")
